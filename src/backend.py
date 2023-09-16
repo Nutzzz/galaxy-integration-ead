@@ -101,7 +101,9 @@ class AuthenticatedHttpClient(HttpClient):
     async def _get_access_token(self):
         url = "https://accounts.ea.com/connect/auth"
         params = {
-            "client_id": "ORIGIN_JS_SDK",
+            "client_id": "JUNO_PC_CLIENT",
+            "nonce": "nonce",
+            "display": "junoClient/login",
             "response_type": "token",
             "redirect_uri": "nucleus:rest",
             "prompt": "none"

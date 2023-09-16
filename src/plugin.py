@@ -36,19 +36,21 @@ def is_windows():
 
 LOCAL_GAMES_CACHE_VALID_PERIOD = 5
 AUTH_PARAMS = {
-    "window_title": "Login to Origin",
+    "window_title": "Login to EA Desktop",
     "window_width": 495 if is_windows() else 480,
     "window_height": 746 if is_windows() else 708,
     "start_uri": "https://accounts.ea.com/connect/auth"
-                 "?response_type=code&client_id=ORIGIN_SPA_ID&display=originXWeb/login"
-                 "&locale=en_US&release_type=prod"
-                 "&redirect_uri=https://www.origin.com/views/login.html",
-    "end_uri_regex": r"^https://www\.origin\.com/views/login\.html.*"
+                 "?response_type=code&client_id=JUNO_PC_CLIENT&display=junoClient/login"
+                 "&nonce=nonce&locale=en_US"
+                 "&redirect_uri=qrc:///html/login_successful.html"
+                 "&pc_sign=eyJhdiI6InYxIiwiYnNuIjoiTkJOUkNYMDJNMjI2NDY1IiwiZ2lkIjo1NzYxLCJoc24iOiJXWDEyRDEySjNGRDIgICAgIiwibWFjIjoiJDU4MTEyMmU2ODM4ZSIsIm1pZCI6IjU0MTQzNTE4MTI4OTQwMDIyNzYiLCJtc24iOiJOQjQ0TlJDWDAwMTRNRE1CIiwic3YiOiJ2MiIsInRzIjoiMjAyMy05LTE2IDE2OjE5OjI1OjEifQ.a6tlEMnh1i6FWoakGl60_RRvLJfdHDcWsblNq5nY-yg" # needs to be auto-genned
+                 "&sbiod_enabled=true",
+    "end_uri_regex": r"^/html/login_successful.html"
 }
 def regex_pattern(regex):
     return ".*" + re.escape(regex) + ".*"
 
-JS = {regex_pattern(r"originX/login?execution"): [
+JS = {regex_pattern(r"juno/login?execution"): [
 r'''
     document.getElementById("rememberMe").click();
 '''
@@ -431,10 +433,10 @@ class OriginPlugin(Plugin):
         webbrowser.open(uri)
     
     async def launch_game(self, game_id: GameId):
-        if is_uri_handler_installed("origin2"):
+        if is_uri_handler_installed("ea"):
             uri = "origin2://game/launch?offerIds={}&autoDownload=1".format(game_id)
         else:
-            uri = "https://www.origin.com/download"
+            uri = "https://www.ea.com/download"
 
         self._open_uri(uri)
 
