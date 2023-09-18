@@ -1,7 +1,13 @@
-__version__ = "0.40"
+__version__ = "0.41"
 
 __changelog__ = {
     "unreleased":"""""",
+    "0.41":
+    """
+        - Origin -> EA Desktop
+            - fixes login while switching from the Origin page to the EA Desktop page (uses a certain juno endpoint to prevent using pc_sign)
+            - fixes errors linked to that change
+    """,
     "0.40":
     """
         - `get_local_size`: return `None` if map.crc not found instead of raising error

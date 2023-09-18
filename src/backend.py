@@ -99,24 +99,30 @@ class AuthenticatedHttpClient(HttpClient):
             raise AccessDenied("Failed to refresh token")
 
     async def _get_access_token(self):
+        # upd 18.09.2023 : sounds like a flaw ?
+        # the key is in the "Location" header, no redirection needed. as it's a qrc:// request (QT) it won't work with aiohttp
         url = "https://accounts.ea.com/connect/auth"
         params = {
             "client_id": "JUNO_PC_CLIENT",
             "nonce": "nonce",
-            "display": "junoClient/login",
+            "display": "junoWeb/login",
             "response_type": "token",
-            "redirect_uri": "nucleus:rest",
+            "redirectUri": "nucleus:rest",
             "prompt": "none"
         }
-        response = await super().request("GET", url, params=params)
+        response = await super().request("GET", url, params=params, allow_redirects=False)
 
+        # upd 18.09.2023 : the access_token is in the "Location" header. It's a Bearer token.
         try:
-            data = await response.json(content_type=None)
-            self._access_token = data["access_token"]
+            data = response.headers["Location"]
+            # should look like qrc:/html/login_successful.html#access_token=
+            # note that there's some other parameters afterwards, so we need to isolate the variable well
+            self._access_token = data.split("#")[1].split("=")[1].split("&")[0]
         except (TypeError, ValueError, KeyError) as e:
             self._log_session_details()
             try:
-                if data.get("error") == 'login_required':
+                # in the case of qrc:/html/login_required.html#error=login_required
+                if data.split("#")[1].split("=")[1].split('&')[0] == "login_required":
                     raise AuthenticationRequired
                 else:
                     raise UnknownBackendResponse(data)
@@ -162,9 +168,9 @@ class OriginBackendClient:
         return "https://api{}.origin.com".format(random.randint(1, 4))
 
     async def get_identity(self) -> Tuple[str, str, str]:
-        pid_response = await self._http_client.get(
-            "https://gateway.ea.com/proxy/identity/pids/me"
-        )
+        pid_response = await self._http_client.get("https://gateway.ea.com/proxy/identity/pids/me")
+        
+        # from JSON to XML
         data = await pid_response.json()
         user_id = data["pid"]["pidId"]
 

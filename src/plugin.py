@@ -40,19 +40,17 @@ AUTH_PARAMS = {
     "window_width": 495 if is_windows() else 480,
     "window_height": 746 if is_windows() else 708,
     "start_uri": "https://accounts.ea.com/connect/auth"
-                 "?response_type=code&client_id=JUNO_PC_CLIENT&display=junoClient/login"
+                 "?response_type=code&client_id=JUNO_PC_CLIENT&display=junoWeb/login"
                  "&nonce=nonce&locale=en_US"
-                 "&redirect_uri=qrc:///html/login_successful.html"
-                 "&pc_sign=eyJhdiI6InYxIiwiYnNuIjoiTkJOUkNYMDJNMjI2NDY1IiwiZ2lkIjo1NzYxLCJoc24iOiJXWDEyRDEySjNGRDIgICAgIiwibWFjIjoiJDU4MTEyMmU2ODM4ZSIsIm1pZCI6IjU0MTQzNTE4MTI4OTQwMDIyNzYiLCJtc24iOiJOQjQ0TlJDWDAwMTRNRE1CIiwic3YiOiJ2MiIsInRzIjoiMjAyMy05LTE2IDE2OjE5OjI1OjEifQ.a6tlEMnh1i6FWoakGl60_RRvLJfdHDcWsblNq5nY-yg" # needs to be auto-genned
-                 "&sbiod_enabled=true",
-    "end_uri_regex": r"^/html/login_successful.html"
+                 "&redirect_uri=qrc:///html/login_successful.html",
+    "end_uri_regex": r"^qrc:/html/login\_successful\.html.*"
 }
 def regex_pattern(regex):
     return ".*" + re.escape(regex) + ".*"
 
 JS = {regex_pattern(r"juno/login?execution"): [
 r'''
-    document.getElementById("rememberMe").click();
+    document.getElementById("rememberMe").checked = true;
 '''
 ]}
 
@@ -433,10 +431,10 @@ class OriginPlugin(Plugin):
         webbrowser.open(uri)
     
     async def launch_game(self, game_id: GameId):
-        if is_uri_handler_installed("ea"):
+        if is_uri_handler_installed("origin2"):
             uri = "origin2://game/launch?offerIds={}&autoDownload=1".format(game_id)
         else:
-            uri = "https://www.ea.com/download"
+            uri = "https://www.ea.com/ea-app"
 
         self._open_uri(uri)
 
@@ -451,17 +449,18 @@ class OriginPlugin(Plugin):
         async def get_subscription_game_store_uri(offer_id):
             try:
                 offer = await self._backend_client.get_offer(offer_id)
+                # i'm afraid i do not know the answer to this question for now...
                 return "https://www.origin.com/store/{}".format(offer["gdpPath"])
             except (KeyError, UnknownError, BackendError, UnknownBackendResponse):
-                return "https://www.origin.com/store/ea-play/play-list"
+                return "https://www.ea.com/ea-play/games"
 
         offer_id = self._offer_id_from_game_id(game_id)
         if is_subscription_game(game_id) and is_offer_missing_from_user_library(offer_id):
             uri = await get_subscription_game_store_uri(offer_id)
         elif is_uri_handler_installed("origin2"):
-            uri = f"origin2://game/download?offerId={game_id}"
+            uri = "origin2://game/launch?offerId={}".format(game_id)
         else:
-            uri = "https://www.origin.com/download"
+            uri = "https://www.ea.com/ea-app"
 
         self._open_uri(uri)
 
