@@ -131,15 +131,10 @@ class OriginPlugin(Plugin):
         auth_info = await self._do_authenticate(new_cookies)
         self._store_cookies(new_cookies)
         return auth_info
-    
-    @staticmethod
-    def _get_api_host():
-        return "https://api{}.origin.com".format(random.randint(1, 4))
 
     @staticmethod
     def _offer_id_from_game_id(game_id: GameId) -> OfferId:
         return OfferId(game_id.split('@')[0])
-
 
     async def get_owned_games(self) -> List[Game]:
         self._check_authenticated()
