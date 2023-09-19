@@ -3,6 +3,7 @@ import pathlib
 import json
 import logging
 import platform
+import random
 import subprocess
 import sys
 import time
@@ -56,6 +57,7 @@ r'''
 
 MultiplayerId = NewType("MultiplayerId", str)
 GameId = NewType("GameId", str)  # eg. Origin.OFR:12345 or Origin.OFR:12345@epic
+# but since EA Desktop has changed their launch format, we need to use the contentId to launch the games (eg: "1026023" for Battlefield 1)
 
 
 class AchievementsImportContext(NamedTuple):
@@ -130,10 +132,31 @@ class OriginPlugin(Plugin):
         auth_info = await self._do_authenticate(new_cookies)
         self._store_cookies(new_cookies)
         return auth_info
+    
+    @staticmethod
+    def _get_api_host():
+        return "https://api{}.origin.com".format(random.randint(1, 4))
 
     @staticmethod
     def _offer_id_from_game_id(game_id: GameId) -> OfferId:
         return OfferId(game_id.split('@')[0])
+    
+    async def _master_title_id_from_game_id(self, game_id: GameId) -> MasterTitleId:
+        # ask supercat for the masterTitleId
+        offerid = self._offer_id_from_game_id(game_id)
+        url = "{}/ecommerce2/public/supercat/{}/{}".format(
+            self._get_api_host(),
+            offerid,
+            "en_US"
+        )
+        response = await self._http_client.get(url)
+        try:
+            answer = await response.json()
+            return answer["masterTitleId"]
+        except ValueError as e:
+            logger.exception("Can not parse backend response: %s, error %s", await response.text, repr(e))
+            raise UnknownBackendResponse()
+
 
     async def get_owned_games(self) -> List[Game]:
         self._check_authenticated()
@@ -431,8 +454,15 @@ class OriginPlugin(Plugin):
         webbrowser.open(uri)
     
     async def launch_game(self, game_id: GameId):
+        offer_id = self._offer_id_from_game_id(game_id)
+        offer = self._offer_id_cache.get(offer_id)
+        if offer is None:
+            logger.exception("Internal cache out of sync")
+            raise UnknownError()
+
+        master_title_id: MasterTitleId = offer["contentId"]
         if is_uri_handler_installed("origin2"):
-            uri = "origin2://game/launch?offerIds={}&autoDownload=1".format(game_id)
+            uri = "origin2://game/launch?offerIds={}&autoDownload=1".format(master_title_id)
         else:
             uri = "https://www.ea.com/ea-app"
 
@@ -449,8 +479,7 @@ class OriginPlugin(Plugin):
         async def get_subscription_game_store_uri(offer_id):
             try:
                 offer = await self._backend_client.get_offer(offer_id)
-                # i'm afraid i do not know the answer to this question for now...
-                return "https://www.origin.com/store/{}".format(offer["gdpPath"])
+                return "https://www.ea.com/games/{}".format(offer["gdpPath"])
             except (KeyError, UnknownError, BackendError, UnknownBackendResponse):
                 return "https://www.ea.com/ea-play/games"
 
@@ -458,7 +487,14 @@ class OriginPlugin(Plugin):
         if is_subscription_game(game_id) and is_offer_missing_from_user_library(offer_id):
             uri = await get_subscription_game_store_uri(offer_id)
         elif is_uri_handler_installed("origin2"):
-            uri = "origin2://game/launch?offerId={}".format(game_id)
+            offer_id = self._offer_id_from_game_id(game_id)
+            offer = self._offer_id_cache.get(offer_id)
+            if offer is None:
+                logger.exception("Internal cache out of sync")
+                raise UnknownError()
+
+            master_title_id: MasterTitleId = offer["contentId"]
+            uri = "origin2://game/launch?offerIds={}".format(master_title_id)
         else:
             uri = "https://www.ea.com/ea-app"
 

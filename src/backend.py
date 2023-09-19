@@ -170,7 +170,6 @@ class OriginBackendClient:
     async def get_identity(self) -> Tuple[str, str, str]:
         pid_response = await self._http_client.get("https://gateway.ea.com/proxy/identity/pids/me")
         
-        # from JSON to XML
         data = await pid_response.json()
         user_id = data["pid"]["pidId"]
 
