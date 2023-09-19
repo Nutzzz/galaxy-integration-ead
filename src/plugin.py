@@ -3,7 +3,6 @@ import pathlib
 import json
 import logging
 import platform
-import random
 import subprocess
 import sys
 import time
@@ -140,22 +139,6 @@ class OriginPlugin(Plugin):
     @staticmethod
     def _offer_id_from_game_id(game_id: GameId) -> OfferId:
         return OfferId(game_id.split('@')[0])
-    
-    async def _master_title_id_from_game_id(self, game_id: GameId) -> MasterTitleId:
-        # ask supercat for the masterTitleId
-        offerid = self._offer_id_from_game_id(game_id)
-        url = "{}/ecommerce2/public/supercat/{}/{}".format(
-            self._get_api_host(),
-            offerid,
-            "en_US"
-        )
-        response = await self._http_client.get(url)
-        try:
-            answer = await response.json()
-            return answer["masterTitleId"]
-        except ValueError as e:
-            logger.exception("Can not parse backend response: %s, error %s", await response.text, repr(e))
-            raise UnknownBackendResponse()
 
 
     async def get_owned_games(self) -> List[Game]:
