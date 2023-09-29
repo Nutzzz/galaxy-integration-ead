@@ -7,6 +7,9 @@ __changelog__ = {
         - Origin -> EA Desktop
             - fixes login while switching from the Origin page to the EA Desktop page (uses a certain juno endpoint to prevent using pc_sign)
             - fixes errors linked to that change
+            - fixes getting the game library and verifying the installed games
+            - implements a new decryption system in order to get the game library
+            - map.crc -> map.eacrc
     """,
     "0.40":
     """

@@ -118,6 +118,12 @@ class AuthenticatedHttpClient(HttpClient):
             # should look like qrc:/html/login_successful.html#access_token=
             # note that there's some other parameters afterwards, so we need to isolate the variable well
             self._access_token = data.split("#")[1].split("=")[1].split("&")[0]
+            # tokens expire after a certain period of time, written in seconds (written in the qrc:// url itself, last parameter)
+            # so we need to save the time of the last successful login
+            # this is used to determine if the token is still valid or not
+            # if it's not, we need to refresh it
+            validity = data.split("#")[1].split("=")[3].split("&")[0]
+            self._save_lats_callback = int(time.time()) + int(validity)
         except (TypeError, ValueError, KeyError) as e:
             self._log_session_details()
             try:
@@ -129,8 +135,6 @@ class AuthenticatedHttpClient(HttpClient):
             except AttributeError:
                 logger.exception(f"Error parsing access token: {repr(e)}, data: {data}")
                 raise UnknownBackendResponse
-        else:
-            self._save_lats()
 
     # more logging for auth lost investigation
 
