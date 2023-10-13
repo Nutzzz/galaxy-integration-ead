@@ -168,8 +168,6 @@ def get_local_games_from_manifests():
             if os.path.exists(is_decrypt_path):
                 subprocess.check_output("Powershell -Command \"Start-Process \'" + python_path + "\' -ArgumentList \'" + is_decrypt_path + "\' -Verb RunAs\"", shell=True)
                 time.sleep(10)
-    else:
-        logger.warning("%TEMP%\is.json file not found. Local games won't be checked. We strongly suggest to use the is_decryption_galaxy.py file to generate the decrypted IS file.")
 
     installed_games = [json.loads(line) for line in open(is_file, 'r', encoding='utf-8')]
     logger.info(f"Opening manifest file {is_file} ...")
