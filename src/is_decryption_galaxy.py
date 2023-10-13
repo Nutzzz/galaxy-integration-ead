@@ -161,10 +161,6 @@ else:
             elif "Model name:" in line:
                 processor_name = line.split(':')[1].strip()
 
-    else:
-        # Unsupported platform
-        pass
-
     # sha1 string
     hw_info = baseboard_manufacturer + ";" + baseboard_serial_number + ";" + bios_manufacturer + ";" + bios_serial_number + ";" + volume_serial_number + ";" + video_controller_pnp_device_id + ";" + processor_manufacturer + ";" + processor_id + ";" + processor_name + ";"
     print(f"Got hardware info: {hw_info}")
