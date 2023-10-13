@@ -159,7 +159,7 @@ def get_local_games_from_manifests():
     
     is_file = os.path.join(tempfile.gettempdir(), "is.json")
 
-    if os.path.exists(is_file):
+    if not os.path.exists(is_file):
         if platform.system() == "Windows":
             is_decrypt_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "is_decryption_galaxy.py")
             python_path = os.path.join(get_python_path(), "python.exe")
@@ -168,18 +168,17 @@ def get_local_games_from_manifests():
             if os.path.exists(is_decrypt_path):
                 subprocess.check_output("Powershell -Command \"Start-Process \'" + python_path + "\' -ArgumentList \'" + is_decrypt_path + "\' -Verb RunAs\"", shell=True)
                 time.sleep(10)
-        
-            installed_games = [json.loads(line) for line in open(is_file, 'r', encoding='utf-8')]
-            logger.info(f"Opening manifest file {is_file} ...")
-            for game in installed_games[0]['installInfos']:
-                    logger.info(f"Found installed game: ", game['softwareId'])
-                    if game['executablePath'] != "":
-                        local_games.append(LocalGame(game['softwareId'], LocalGameState.Installed))
-                    else:
-                        local_games.append(LocalGame(game['softwareId'], LocalGameState.None_))
     else:
         logger.warning("%TEMP%\is.json file not found. Local games won't be checked. We strongly suggest to use the is_decryption_galaxy.py file to generate the decrypted IS file.")
 
+    installed_games = [json.loads(line) for line in open(is_file, 'r', encoding='utf-8')]
+    logger.info(f"Opening manifest file {is_file} ...")
+    for game in installed_games[0]['installInfos']:
+            logger.info(f"Found installed game: ", game['softwareId'])
+            if game['executablePath'] != "":
+                local_games.append(LocalGame(game['softwareId'], LocalGameState.Installed))
+            else:
+                local_games.append(LocalGame(game['softwareId'], LocalGameState.None_))
 
     for local_game in local_games:
         if is_game_running(local_game.game_id):
