@@ -51,14 +51,14 @@ else:
                     key, value = line.split('=', 1)
                     data[key] = value.rstrip('\r')
             volume_serial_number = data.get('VolumeSerialNumber')
-        query_videocontroller = subprocess.check_output('wmic path win32_videocontroller get PNPDeviceID /format:list')
+        query_videocontroller = subprocess.check_output('wmic path win32_videocontroller where "DeviceID=\'VideoController1\'" get PNPDeviceID /format:list')
         if query_videocontroller:
             data = {}
             for line in query_videocontroller.decode('utf-8').split('\n'):
                 if '=' in line:
                     key, value = line.split('=', 1)
                     data[key] = value.rstrip('\r')
-            video_controller_pnp_device_id = data.get('PNPDeviceID')[0].replace("&amp;", "&")
+            video_controller_pnp_device_id = data.get('PNPDeviceID').replace("&amp;", "&")
         query_cpu = subprocess.check_output('wmic cpu get Manufacturer,ProcessorId /format:list')
         if query_cpu:
             data = {}
