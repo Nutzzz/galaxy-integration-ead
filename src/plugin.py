@@ -40,10 +40,10 @@ AUTH_PARAMS = {
     "window_width": 495 if is_windows() else 480,
     "window_height": 746 if is_windows() else 708,
     "start_uri": "https://accounts.ea.com/connect/auth"
-                 "?response_type=code&client_id=JUNO_PC_CLIENT&display=junoWeb/login"
-                 "&nonce=nonce&locale=en_US"
-                 "&redirect_uri=qrc:///html/login_successful.html",
-    "end_uri_regex": r"^qrc:/html/login\_successful\.html.*"
+                 "?response_type=code&client_id=EADOTCOM-WEB-SERVER&display=junoWeb/login"
+                 "&locale=en_US&release_type=prod"
+                 "&redirect_uri=https://www.ea.com/ea-play",
+    "end_uri_regex": r"^https://www\.ea\.com/ea-play.*"
 }
 def regex_pattern(regex):
     return ".*" + re.escape(regex) + ".*"
