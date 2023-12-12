@@ -1,4 +1,5 @@
 import json
+import pickle
 import re
 import functools
 import logging
@@ -8,6 +9,8 @@ import platform
 import subprocess
 import tempfile
 import winreg
+
+from is_decryption_galaxy import decrypt_IS
 
 if platform.system() == "Windows":
     from ctypes import byref, sizeof, windll, create_unicode_buffer, FormatError, WinError
@@ -144,7 +147,17 @@ else:
                 logger.exception("Failed to get information for PID=%s" % pid)
 
 
-def get_local_games_from_manifests():
+def launch_decryption_process():
+    if platform.system() == "Windows":
+            is_decrypt_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "is_decryption_galaxy.py")
+            python_path = os.path.join(get_python_path(), "python.exe")
+            if not os.path.exists(python_path):
+                python_path = "python.exe"
+            if os.path.exists(is_decrypt_path):
+                subprocess.check_output("Powershell -Command \"Start-Process \'" + python_path + "\' -ArgumentList \'" + is_decrypt_path + "\' -Verb RunAs\"", shell=True)
+                time.sleep(10)
+
+def get_local_games_from_manifests(self):
     local_games = []
 
     # since the awakening of EA Desktop, the logic has changed concerning the verification of installed games.
@@ -157,23 +170,43 @@ def get_local_games_from_manifests():
                 return True
         return False
     
+    # Check the persistent cache first.
+    if "is_filesize" in self.persistent_cache:
+        self.is_filesize_cache = pickle.loads(bytes.fromhex(self.persistent_cache["is_filesize"]))
+    # If the IS filesize cannot be found in the persistent cache, then check a local file for it.
+    else:
+        try:
+            file = open("is_filesize.txt", "r")
+            for line in file.readlines():
+                if line[:1] != "#":
+                    self.is_filesize_cache = pickle.loads(bytes.fromhex(line))
+                    break
+        except FileNotFoundError:
+            # If the file does not exist, then use the actual IS filesize.
+            self.is_filesize_track = os.path.getsize(os.path.join(tempfile.gettempdir(), "IS"))
+            decrypt_IS("possible_first_run")
+            self.persistent_cache["is_filesize"] = pickle.dumps(self.is_filesize_cache).hex()
+            self.push_cache()
+    
+    # Compare the cached size with the current size.
+    if os.path.exists(os.path.join(tempfile.gettempdir(), "IS")):
+        is_filesize = os.path.getsize(os.path.join(tempfile.gettempdir(), "IS"))
+    
+        # Check for file size differences (more or less)
+        if self.is_filesize_cache != is_filesize:
+            self.is_filesize_track = os.path.getsize(os.path.join(tempfile.gettempdir(), "IS"))
+            decrypt_IS("filesize_change")
+        else:
+            logger.info('No changes found in the IS file. Continuing...')
+    
     is_file = os.path.join(tempfile.gettempdir(), "is.json")
-
-    if not os.path.exists(is_file):
-        if platform.system() == "Windows":
-            is_decrypt_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "is_decryption_galaxy.py")
-            python_path = os.path.join(get_python_path(), "python.exe")
-            if not os.path.exists(python_path):
-                python_path = "python.exe"
-            if os.path.exists(is_decrypt_path):
-                subprocess.check_output("Powershell -Command \"Start-Process \'" + python_path + "\' -ArgumentList \'" + is_decrypt_path + "\' -Verb RunAs\"", shell=True)
-                time.sleep(10)
-
-    installed_games = [json.loads(line) for line in open(is_file, 'r', encoding='utf-8')]
+    file = open(is_file)
+    json_file = json.load(file)
     logger.info(f"Opening manifest file {is_file} ...")
-    for game in installed_games[0]['installInfos']:
-            logger.info(f"Found installed game: ", game['softwareId'])
-            if game['executablePath'] != "":
+    for game in json_file['installInfos']:
+        # logging DLCs is unnecessary
+        if game['softwareId'].startswith("Origin") or game['softwareId'].startswith("OFB") or game['softwareId'].startswith("DR"):
+            if game['executablePath'] != "" and game['detailedState']['installStatus'] == 5:
                 local_games.append(LocalGame(game['softwareId'], LocalGameState.Installed))
             else:
                 local_games.append(LocalGame(game['softwareId'], LocalGameState.None_))
@@ -239,7 +272,7 @@ class LocalGames:
 
     def __init__(self):
         try:
-            self._local_games = get_local_games_from_manifests()
+            self._local_games = get_local_games_from_manifests(self)
         except FailedParsingManifest:
             logger.warning("Failed to parse manifest. Most likely there's no presence of the IS JSON file.")
             self._local_games = []
