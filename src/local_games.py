@@ -10,8 +10,6 @@ import subprocess
 import tempfile
 import winreg
 
-from is_decryption_galaxy import decrypt_IS
-
 if platform.system() == "Windows":
     from ctypes import byref, sizeof, windll, create_unicode_buffer, FormatError, WinError
     from ctypes.wintypes import DWORD
@@ -184,7 +182,8 @@ def get_local_games_from_manifests(self):
         except FileNotFoundError:
             # If the file does not exist, then use the actual IS filesize.
             self.is_filesize_track = os.path.getsize(os.path.join(tempfile.gettempdir(), "IS"))
-            decrypt_IS("possible_first_run")
+            logger.info("Probable first run. Decrypting IS file...")
+            launch_decryption_process()
             self.persistent_cache["is_filesize"] = pickle.dumps(self.is_filesize_cache).hex()
             self.push_cache()
     
@@ -195,7 +194,8 @@ def get_local_games_from_manifests(self):
         # Check for file size differences (more or less)
         if self.is_filesize_cache != is_filesize:
             self.is_filesize_track = os.path.getsize(os.path.join(tempfile.gettempdir(), "IS"))
-            decrypt_IS("filesize_change")
+            logger.info("Filesize is different than cache. Decrypting IS file...")
+            launch_decryption_process()
         else:
             logger.info('No changes found in the IS file. Continuing...')
     
