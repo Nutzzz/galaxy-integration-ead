@@ -1,10 +1,13 @@
 import asyncio
+import os
 import pathlib
 import json
 import logging
+import pickle
 import platform
 import subprocess
 import sys
+import tempfile
 import time
 import webbrowser
 from functools import partial
@@ -21,7 +24,7 @@ from galaxy.api.types import (
 )
 
 from backend import AuthenticatedHttpClient, MasterTitleId, OfferId, OriginBackendClient, Timestamp, AchievementSet, Json
-from local_games import get_local_content_path, LocalGames, parse_map_crc_for_total_size
+from local_games import get_local_content_path, LocalGames, launch_decryption_process, parse_map_crc_for_total_size
 from uri_scheme_handler import is_uri_handler_installed
 from version import __version__
 import re
@@ -57,7 +60,6 @@ r'''
 MultiplayerId = NewType("MultiplayerId", str)
 GameId = NewType("GameId", str)  # eg. Origin.OFR:12345 or Origin.OFR:12345@epic
 # but since EA Desktop has changed their launch format, we need to use the contentId to launch the games (eg: "1026023" for Battlefield 1)
-
 
 class AchievementsImportContext(NamedTuple):
     owned_games: Dict[GameId, AchievementSet]
@@ -529,11 +531,48 @@ class OriginPlugin(Plugin):
             "offers": None,
             "game_time": game_time_decoder,
         }
-        for key, decoder in cache_decoders.items():
-            self.persistent_cache[key] = safe_decode(self.persistent_cache.get(key), key, decoder)
 
-        self._http_client.load_lats_from_cache(self.persistent_cache.get('lats'))
-        self._http_client.set_save_lats_callback(self._save_lats)
+        # Compare the IS filesize to what we have in the cache for potential changes.
+        if "is_filesize" in self.persistent_cache:
+            self.is_filesize_cache = pickle.loads(bytes.fromhex(self.persistent_cache["is_filesize"]))
+        # If the IS filesize cannot be found in the persistent cache, then check a local file for it.
+        else:
+            try:
+                file = open("is_filesize.txt", "r")
+                for line in file.readlines():
+                    if line[:1] != "#":
+                        self.is_filesize_cache = pickle.loads(bytes.fromhex(line))
+                        break
+            except FileNotFoundError:
+                # If the file does not exist, then use the actual IS filesize.
+                if platform.system() == "Windows":
+                    file_path = os.path.join(os.environ.get("ProgramData", os.environ.get("SystemDrive", "C:") + R"\ProgramData"), "EA Desktop", "530c11479fe252fc5aabc24935b9776d4900eb3ba58fdc271e0d6229413ad40e", "IS")
+                elif platform.system() == "Darwin":
+                    file_path = os.path.join(os.sep, "Library", "Application Support", "EA Desktop", "530c11479fe252fc5aabc24935b9776d4900eb3ba58fdc271e0d6229413ad40e", "IS")
+                else:
+                    file_path = "IS"
+                self.is_filesize_track = os.path.getsize(file_path)
+                logger.info("Probable first run. Decrypting IS file...")
+                launch_decryption_process()
+                self.persistent_cache["is_filesize"] = pickle.dumps(self.is_filesize_cache).hex()
+                self.push_cache()
+        
+        # Compare the cached size with the current size.
+        if os.path.exists(os.path.join(tempfile.gettempdir(), "IS")):
+            is_filesize = os.path.getsize(os.path.join(tempfile.gettempdir(), "IS"))
+        
+            # Check for file size differences (more or less)
+            if self.is_filesize_cache != is_filesize:
+                self.is_filesize_track = os.path.getsize(os.path.join(tempfile.gettempdir(), "IS"))
+                logger.info("Filesize is different than cache. Decrypting IS file...")
+                launch_decryption_process()
+            else:
+                logger.info('No changes found in the IS file. Continuing...')
+            for key, decoder in cache_decoders.items():
+                self.persistent_cache[key] = safe_decode(self.persistent_cache.get(key), key, decoder)
+
+            self._http_client.load_lats_from_cache(self.persistent_cache.get('lats'))
+            self._http_client.set_save_lats_callback(self._save_lats)
 
     def _save_lats(self, lats: int):
         self.persistent_cache['lats'] = str(lats)

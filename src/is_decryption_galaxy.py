@@ -3,6 +3,8 @@ import platform
 import os
 import tempfile
 import time
+
+from aes import AESModeOfOperationCBC
 if platform.system() == "Darwin":
     import psutil
 from hashlib import sha1, sha3_256
@@ -42,6 +44,9 @@ else:
 iv = "allUsersGenericIdIS".encode('ascii')
 iv_hash = sha3_256(iv).digest()
 
+# -----------------------------------------------------HARDWARE INFORMATION-----------------------------------------------------
+# Get hardware information on Windows
+# ----------------------------------------------------------------------------------------------------------------------------
 if platform.system() == "Windows":
     query_baseboard = subprocess.check_output('wmic baseboard get Manufacturer,SerialNumber /format:list', shell=True)
     if query_baseboard:
@@ -92,7 +97,9 @@ if platform.system() == "Windows":
                 key, value = line.split('=', 1)
                 data[key] = value.rstrip('\r')
         processor_name = data.get('Name')
-    
+# ----------------------------------------------------------------------------------------------------------------------------
+# Get hardware information on macOS (WORK IN PROGRESS)
+# ----------------------------------------------------------------------------------------------------------------------------
 elif platform.system() == "Darwin":
     # Retrieve system information
     baseboard_manufacturer = ''
@@ -105,8 +112,13 @@ elif platform.system() == "Darwin":
     processor_name = ''
 
     # Baseboard information
-    baseboard_manufacturer = subprocess.check_output(["system_profiler", "SPHardwareDataType"])
-    baseboard_manufacturer = baseboard_manufacturer.decode('utf-8').split(':')[-1].strip()
+    baseboard_info = subprocess.check_output(["system_profiler", "SPHardwareDataType"])
+    baseboard_info = baseboard_info.decode('utf-8').split('\n')
+    for line in baseboard_info:
+        if "Manufacturer:" in line:
+            baseboard_manufacturer = line.split(':')[-1].strip()
+        elif "Serial Number (system):" in line:
+            baseboard_serial_number = line.split(':')[-1].strip()
 
     # BIOS information (Mac doesn't have BIOS in the traditional sense)
     bios_manufacturer = "Apple"
@@ -118,7 +130,12 @@ elif platform.system() == "Darwin":
     volume_serial_number = volume_serial_number.decode('utf-8').split('Serial Number (system):')[-1].strip()
 
     # Video controller information
-    # to be determined
+    query_videocontroller = subprocess.check_output('system_profiler", "SPDisplaysDataType | grep "Chipset Model" | awk -F": " \'{print $2}\'', shell=True)
+    if query_videocontroller:
+        video_controller_info = query_videocontroller.decode('utf-8').strip()
+    else:
+        video_controller_info = "Unknown"
+    video_controller_pnp_device_id = video_controller_info
 
     # Processor information
     processor_info = subprocess.check_output(["sysctl", "-n", "machdep.cpu.brand_string"])
@@ -126,7 +143,9 @@ elif platform.system() == "Darwin":
 
     processor_manufacturer = "Intel"  # Assuming Mac uses Intel processors
     processor_name = processor_info
-    
+# ----------------------------------------------------------------------------------------------------------------------------
+# Get hardware information on Linux (WORK IN PROGRESS)
+# ----------------------------------------------------------------------------------------------------------------------------
 elif platform.system() == "Linux":
     # Retrieve system information
     baseboard_manufacturer = ''
@@ -196,7 +215,7 @@ key_hash = sha3_256(hash_bytes).digest()
 
 print(f"Got key hash: {key_hash.hex()}")
 
-aes = aes.AESModeOfOperationCBC(key_hash, iv_hash[0:16])
+aes = AESModeOfOperationCBC(key_hash, iv_hash[0:16])
 
 # Open input and output files
 with open(file_path, 'rb') as infile, open(os.path.join(tempfile.gettempdir(), 'is.json'), 'wb') as outfile:

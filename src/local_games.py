@@ -160,7 +160,7 @@ def get_local_games_from_manifests(self):
 
     # since the awakening of EA Desktop, the logic has changed concerning the verification of installed games.
     # manifests are no longer necessary in order to verify if a game is installed or not.
-    running_processes = [exe for pid, exe in process_iter() if exe is not None]
+    running_processes = [exe for _, exe in process_iter() if exe is not None]
 
     def is_game_running(game_folder_name):
         for exe in running_processes:
@@ -168,38 +168,9 @@ def get_local_games_from_manifests(self):
                 return True
         return False
     
-    # Check the persistent cache first.
-    if "is_filesize" in self.persistent_cache:
-        self.is_filesize_cache = pickle.loads(bytes.fromhex(self.persistent_cache["is_filesize"]))
-    # If the IS filesize cannot be found in the persistent cache, then check a local file for it.
-    else:
-        try:
-            file = open("is_filesize.txt", "r")
-            for line in file.readlines():
-                if line[:1] != "#":
-                    self.is_filesize_cache = pickle.loads(bytes.fromhex(line))
-                    break
-        except FileNotFoundError:
-            # If the file does not exist, then use the actual IS filesize.
-            self.is_filesize_track = os.path.getsize(os.path.join(tempfile.gettempdir(), "IS"))
-            logger.info("Probable first run. Decrypting IS file...")
-            launch_decryption_process()
-            self.persistent_cache["is_filesize"] = pickle.dumps(self.is_filesize_cache).hex()
-            self.push_cache()
-    
-    # Compare the cached size with the current size.
-    if os.path.exists(os.path.join(tempfile.gettempdir(), "IS")):
-        is_filesize = os.path.getsize(os.path.join(tempfile.gettempdir(), "IS"))
-    
-        # Check for file size differences (more or less)
-        if self.is_filesize_cache != is_filesize:
-            self.is_filesize_track = os.path.getsize(os.path.join(tempfile.gettempdir(), "IS"))
-            logger.info("Filesize is different than cache. Decrypting IS file...")
-            launch_decryption_process()
-        else:
-            logger.info('No changes found in the IS file. Continuing...')
-    
     is_file = os.path.join(tempfile.gettempdir(), "is.json")
+    if not os.path.exists(is_file):
+        launch_decryption_process()
     file = open(is_file)
     json_file = json.load(file)
     logger.info(f"Opening manifest file {is_file} ...")
@@ -269,7 +240,6 @@ def get_local_content_path():
 
 
 class LocalGames:
-
     def __init__(self):
         try:
             self._local_games = get_local_games_from_manifests(self)

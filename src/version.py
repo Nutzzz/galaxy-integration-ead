@@ -1,15 +1,16 @@
-__version__ = "0.41"
+__version__ = "0.41-beta.1"
 
 __changelog__ = {
     "unreleased":"""""",
-    "0.41":
+    "0.41-beta.1":
     """
         - Origin -> EA Desktop
-            - fixes login while switching from the Origin page to the EA Desktop page (uses a certain juno endpoint to prevent using pc_sign)
-            - fixes errors linked to that change
-            - fixes getting the game library and verifying the installed games
-            - implements a new decryption system in order to get the game library
-            - map.crc -> map.eacrc
+            -> fixes login while switching from the Origin page to the EA Desktop page (uses a certain juno endpoint to prevent using pc_sign)
+            -> fixes errors linked to that change
+            -> fixes game library discovery and verifying the installed games
+            -> implements a new decryption system in order to get the game library
+            -> map.crc -> map.eacrc
+        - update Galaxy API version to 0.69
     """,
     "0.40":
     """
