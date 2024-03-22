@@ -533,29 +533,30 @@ class OriginPlugin(Plugin):
         }
 
         # Compare the IS filesize to what we have in the cache for potential changes.
-        if "is_filesize" in self.persistent_cache:
-            self.is_filesize_cache = pickle.loads(bytes.fromhex(self.persistent_cache["is_filesize"]))
+        
         # If the IS filesize cannot be found in the persistent cache, then check a local file for it.
-        else:
-            try:
+        try:
+            if "is_filesize" in self.persistent_cache:
+                self.is_filesize_cache = pickle.loads(bytes.fromhex(self.persistent_cache["is_filesize"]))
+            elif os.path.exists("is_filesize.txt"):
                 file = open("is_filesize.txt", "r")
                 for line in file.readlines():
                     if line[:1] != "#":
                         self.is_filesize_cache = pickle.loads(bytes.fromhex(line))
                         break
-            except FileNotFoundError:
-                # If the file does not exist, then use the actual IS filesize.
-                if platform.system() == "Windows":
-                    file_path = os.path.join(os.environ.get("ProgramData", os.environ.get("SystemDrive", "C:") + R"\ProgramData"), "EA Desktop", "530c11479fe252fc5aabc24935b9776d4900eb3ba58fdc271e0d6229413ad40e", "IS")
-                elif platform.system() == "Darwin":
-                    file_path = os.path.join(os.sep, "Library", "Application Support", "EA Desktop", "530c11479fe252fc5aabc24935b9776d4900eb3ba58fdc271e0d6229413ad40e", "IS")
-                else:
-                    file_path = "IS"
-                self.is_filesize_track = os.path.getsize(file_path)
-                logger.info("Probable first run. Decrypting IS file...")
-                launch_decryption_process()
-                self.persistent_cache["is_filesize"] = pickle.dumps(self.is_filesize_cache).hex()
-                self.push_cache()
+        except FileNotFoundError:
+            # If the file does not exist, then use the actual IS filesize.
+            if platform.system() == "Windows":
+                file_path = os.path.join(os.environ.get("ProgramData", os.environ.get("SystemDrive", "C:") + R"\ProgramData"), "EA Desktop", "530c11479fe252fc5aabc24935b9776d4900eb3ba58fdc271e0d6229413ad40e", "IS")
+            elif platform.system() == "Darwin":
+                file_path = os.path.join(os.sep, "Library", "Application Support", "EA Desktop", "530c11479fe252fc5aabc24935b9776d4900eb3ba58fdc271e0d6229413ad40e", "IS")
+            else:
+                file_path = "IS"
+            self.is_filesize_track = os.path.getsize(file_path)
+            logger.info("Probable first run. Decrypting IS file...")
+            launch_decryption_process()
+            self.persistent_cache["is_filesize"] = pickle.dumps(self.is_filesize_cache).hex()
+            self.push_cache()
         
         # Compare the cached size with the current size.
         if os.path.exists(os.path.join(tempfile.gettempdir(), "IS")):
@@ -568,8 +569,9 @@ class OriginPlugin(Plugin):
                 launch_decryption_process()
             else:
                 logger.info('No changes found in the IS file. Continuing...')
-            for key, decoder in cache_decoders.items():
-                self.persistent_cache[key] = safe_decode(self.persistent_cache.get(key), key, decoder)
+
+        for key, decoder in cache_decoders.items():
+            self.persistent_cache[key] = safe_decode(self.persistent_cache.get(key), key, decoder)
 
             self._http_client.load_lats_from_cache(self.persistent_cache.get('lats'))
             self._http_client.set_save_lats_callback(self._save_lats)

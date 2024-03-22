@@ -256,7 +256,7 @@ class LocalGames:
         returns list of changed games (added, removed, or changed)
         updated local_games property
         '''
-        new_local_games = get_local_games_from_manifests()
+        new_local_games = get_local_games_from_manifests(self)
         notify_list = get_state_changes(self._local_games, new_local_games)
         self._local_games = new_local_games
 
