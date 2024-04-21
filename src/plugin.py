@@ -303,10 +303,27 @@ class OriginPlugin(Plugin):
         loop = asyncio.get_running_loop()
         asyncio.create_task(notify_local_games_changed())
 
+    ###
+    # Since EA Desktop, we need to juggle with the IS file (for the installed games) and the new "map.eacrc" file.
+    # The BIG issue here is to get the game name to correspond to the folder name, in order for us to access the correct "map.eacrc" file
+    # Even here, i'm quite unsure about if this method will work as expected. This is a new feature that EA Desktop has implemented.
+    ###
     async def prepare_local_size_context(self, game_ids: List[GameId]) -> Dict[str, pathlib.PurePath]:
         game_id_crc_map: Dict[GameId, str] = {}
-        for filepath, manifest in zip(self._local_games._manifests_stats.keys(), self._local_games._manifests):
-            game_id_crc_map[manifest.game_id] = pathlib.PurePath(filepath).parent / 'map.crc'
+        # Blame me for that cumbersome method, but I believe it's the only way to make that work.
+        if platform.system() == "Windows":
+            platform_path = os.path.join(os.environ.get("ProgramData", os.environ.get("SystemDrive", "C:") + R"\ProgramData"), "EA Desktop", "InstallData")
+        elif platform.system() == "Darwin":
+            platform_path = os.path.join(os.sep, "Library", "Application Support", "EA Desktop", "InstallData")
+        else:
+            platform_path = "."
+        
+        # Since we have NO idea about the game name but we have the game ID, recursively search for the game ID in the subfolders.
+        for root, dirs, files in os.walk(platform_path):
+            for dir in dirs:
+                for manifest in self._local_games._manifests:
+                    if dir == "base-" + manifest.game_id:
+                        game_id_crc_map[manifest.game_id] = pathlib.PurePath(root) / 'map.eacrc'
         return game_id_crc_map
 
     async def get_local_size(self, game_id: GameId, context: Dict[str, pathlib.PurePath]) -> Optional[int]:

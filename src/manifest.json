@@ -1,8 +1,8 @@
 {
     "name": "Galaxy EA Desktop plugin",
-    "platform": "origin",
+    "platform": "ea",
     "guid": "7f53219b-4e2b-4591-9f4f-dfc5f4ba9eb0",
-    "version": "0.41-beta.1",
+    "version": "0.41.0.1",
     "description": "Galaxy EA Desktop plugin",
     "author": "Friends of Galaxy / BellezaEmporium, Nutzzz",
     "email": "lanesh4d0w@gmail.com",

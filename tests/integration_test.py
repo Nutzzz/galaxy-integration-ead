@@ -50,7 +50,7 @@ def test_integration():
         "id": "3",
         "jsonrpc": "2.0",
         "result": {
-            "platform_name": "origin",
+            "platform_name": "ea",
             "token": token,
             "features": {
                 "ImportOwnedGames",

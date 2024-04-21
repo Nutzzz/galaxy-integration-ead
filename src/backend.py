@@ -1,7 +1,6 @@
 import logging
 import json
 import time
-import random
 import xml.etree.ElementTree as ET
 from collections import namedtuple
 from datetime import datetime
@@ -118,7 +117,7 @@ class AuthenticatedHttpClient(HttpClient):
             # should look like qrc:/html/login_successful.html#access_token=
             # note that there's some other parameters afterwards, so we need to isolate the variable well
             self._access_token = data.split("#")[1].split("=")[1].split("&")[0]
-            # tokens expire after a certain period of time, written in seconds (written in the qrc:// url itself, last parameter)
+            # tokens expire after 4 hours, written in seconds (written in the qrc:// url itself, last parameter)
             # so we need to save the time of the last successful login
             # this is used to determine if the token is still valid or not
             # if it's not, we need to refresh it
@@ -167,9 +166,20 @@ class OriginBackendClient:
     def __init__(self, http_client):
         self._http_client = http_client
 
+    # Juno API
     @staticmethod
     def _get_api_host():
-        return "https://api{}.origin.com".format(random.randint(1, 4))
+        return "https://service-aggregation-layer.juno.ea.com/graphql"
+    
+    # Origin (old) API
+    @staticmethod
+    def _get_origin_host():
+        return "https://api1.origin.com"
+
+    # Only applies to the Juno API. Needed to access certain API endpoints, or else we're refused.
+    @staticmethod
+    def _get_persisted_query_status():
+        return "&extensions={\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"575a85abf94ca1c4c71dd422d536cb15b02c94ac720459e3b7f9750097f9153f\"}}"
 
     async def get_identity(self) -> Tuple[str, str, str]:
         pid_response = await self._http_client.get("https://gateway.ea.com/proxy/identity/pids/me")
@@ -178,14 +188,14 @@ class OriginBackendClient:
         user_id = data["pid"]["pidId"]
 
         persona_id_response = await self._http_client.get(
-            "{}/atom/users?userIds={}".format(self._get_api_host(), user_id)
+            "{}?operationName=GetPlayerByPdLite&variables={{\"isMutualFriendsEnabled\":false,\"pd\":\"{}\"}}{}".format(self._get_api_host(), user_id, self._get_persisted_query_status())
         )
-        content = await persona_id_response.text()
+        content = await persona_id_response.json()
+        logger.info("Retrieved content: " + json.dumps(content))
 
         try:
-            origin_account_info = ET.fromstring(content)
-            persona_id = origin_account_info.find("user").find("personaId").text
-            user_name = origin_account_info.find("user").find("EAID").text
+            persona_id = content["data"]["playerByPd"]["psd"]
+            user_name = content["data"]["playerByPd"]["displayName"]
 
             return str(user_id), str(persona_id), str(user_name)
         except (ET.ParseError, AttributeError) as e:
@@ -194,7 +204,7 @@ class OriginBackendClient:
 
     async def get_entitlements(self, user_id) -> List[Json]:
         url = "{}/ecommerce2/consolidatedentitlements/{}?machine_hash=1".format(
-            self._get_api_host(),
+            self._get_origin_host(),
             user_id
         )
         headers = {
@@ -211,7 +221,7 @@ class OriginBackendClient:
 
     async def get_offer(self, offer_id) -> Json:
         url = "{}/ecommerce2/public/supercat/{}/{}".format(
-            self._get_api_host(),
+            self._get_origin_host(),
             offer_id,
             "en_US"
         )
@@ -270,7 +280,7 @@ class OriginBackendClient:
 
     async def get_game_time(self, user_id, master_title_id, multiplayer_id):
         url = "{}/atom/users/{}/games/{}/usage".format(
-            self._get_api_host(),
+            self._get_origin_host(),
             user_id,
             master_title_id
         )
@@ -310,42 +320,83 @@ class OriginBackendClient:
 
     async def get_friends(self, user_id):
         response = await self._http_client.get(
-            "{base_api}/atom/users/{user_id}/other/{other_user_id}/friends?page={page}".format(
+            "{base_api}?operationName=GetPlayerFriends&variables={{\"mutualFriendsOffset\":0,\"mutualFriendsLimit\":0,\"isMutualFriendsEnabled\":false,\"pd\":\"{userid}\",\"offset\":0,\"limit\":0}}{extension}".format(
                 base_api=self._get_api_host(),
-                user_id=user_id,
-                other_user_id=user_id,
-                page=0
+                userid=user_id,
+                extension=self._get_persisted_query_status()
             )
         )
 
         """
-        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-        <users>
-            <user>
-                <userId>1003118773678</userId>
-                <personaId>1781965055</personaId>
-                <EAID>martinaurtica</EAID>
-            </user>
-            <user>
-                <userId>1008880909879</userId>
-                <personaId>1004303509879</personaId>
-                <EAID>testerg976</EAID>
-            </user>
-        </users>
-        """
-        try:
-            content = await response.text()
-            return {
-                user_xml.find("userId").text: user_xml.find("EAID").text
-                for user_xml in ET.ElementTree(ET.fromstring(content)).iter("user")
+        {
+            "data": {
+                "playerByPd": {
+                "id": "...",
+                "pd": "...",
+                "friends": {
+                    "totalCount": 1,
+                    "hasNextPage": false,
+                    "hasPreviousPage": false,
+                    "items": [
+                    {
+                        "id": "...",
+                        "pd": "...",
+                        "player": {
+                        "id": "...",
+                        "pd": "...",
+                        "psd": "...",
+                        "displayName": "User",
+                        "uniqueName": "User",
+                        "nickname": "User",
+                        "avatar": {
+                            "large": {
+                            "height": 416,
+                            "width": 416,
+                            "path": "https://secure.download.dm.origin.com/production/avatar/prod/1/599/416x416.JPEG",
+                            "__typename": "Image"
+                            },
+                            "medium": {
+                            "height": 208,
+                            "width": 208,
+                            "path": "https://secure.download.dm.origin.com/production/avatar/prod/1/599/208x208.JPEG",
+                            "__typename": "Image"
+                            },
+                            "small": {
+                            "height": 40,
+                            "width": 40,
+                            "path": "https://secure.download.dm.origin.com/production/avatar/prod/1/599/40x40.JPEG",
+                            "__typename": "Image"
+                            },
+                            "__typename": "AvatarList"
+                        },
+                        "relationship": "FRIEND",
+                        "__typename": "Player"
+                        },
+                        "source": "GLOBAL",
+                        "__typename": "Friend"
+                    },
+                    ],
+                    "__typename": "FriendsOffsetPage"
+                },
+                "__typename": "Player"
+                }
             }
-        except (ET.ParseError, AttributeError, ValueError):
+        }
+        """
+
+        try:
+            content = await response.json()
+            return {
+                user_json["id"]: user_json["pd"]
+                for user_json in content["data"]["playerByPd"]["friends"]["items"]
+            }
+        except (AttributeError, ValueError):
             logger.exception("Can not parse backend response: %s", await response.text())
             raise UnknownBackendResponse()
 
     async def get_lastplayed_games(self, user_id) -> Dict[MasterTitleId, Timestamp]:
         response = await self._http_client.get("{base_api}/atom/users/{user_id}/games/lastplayed".format(
-            base_api=self._get_api_host(),
+            base_api=self._get_origin_host(),
             user_id=user_id
         ))
 
@@ -359,6 +410,7 @@ class OriginBackendClient:
             </lastPlayed>
         </lastPlayedGames>
         '''
+
         def parse_title_id(product_info_xml) -> MasterTitleId:
             return product_info_xml.find("masterTitleId").text
 
@@ -512,7 +564,7 @@ class OriginBackendClient:
         """
             Note: `game_id` of an returned subscription game may not match with `game_id` of the game added to user library!
         """
-        url = f"{self._get_api_host()}/ecommerce2/vaultInfo/Origin Membership/tiers/{tier}"
+        url = f"{self._get_origin_host()}/ecommerce2/vaultInfo/Origin Membership/tiers/{tier}"
         headers = {
             "Accept": "application/vnd.origin.v3+json; x-cache/force-write"
         }
