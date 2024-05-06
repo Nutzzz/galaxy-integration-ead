@@ -234,15 +234,18 @@ with open(file_path, 'rb') as infile, open(os.path.join(tempfile.gettempdir(), '
         outfile.write(decrypted_block)
 
 
+
 # verifying the JSON file
 # seems like there's undescribed characters at the end of the file
 # so we need to remove them
 
 json_string = ""
 with open(os.path.join(tempfile.gettempdir(), "is.json"), "r+") as f:
-    # Remove spaces after the last bracket (EOF)
-    json_string = re.sub(r'\s+(?=\})', '', json_string)
+    # Remove undesired characters at the end of the file
+    json_string = re.sub(r'\x06+', '', f.read())
+    f.seek(0)
     f.write(json_string)
+    f.truncate()
 
 print("IS decrypted successfully.")
 
