@@ -1,8 +1,18 @@
-__version__ = "0.41-beta.1"
+__version__ = "0.41.0.1"
 
 __changelog__ = {
     "unreleased":"""""",
-    "0.41-beta.1":
+    "0.41.0.1":
+    """
+        - Origin -> EA Desktop
+            -> using Juno API (work in progress)
+            -> reimplemented the functions using the new API (work in progress)
+            -> deprecation message on certain functions not used in EA Desktop (still using the Origin API for now)
+            -> rewrote file size discovery function (map.eacrc) (work in progress)
+            -> 
+        - update Galaxy API version to 0.69
+    """,
+    "0.41.0":
     """
         - Origin -> EA Desktop
             -> fixes login while switching from the Origin page to the EA Desktop page (uses a certain juno endpoint to prevent using pc_sign)

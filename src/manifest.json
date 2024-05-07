@@ -1,6 +1,6 @@
 {
     "name": "Galaxy EA Desktop plugin",
-    "platform": "ea",
+    "platform": "origin",
     "guid": "7f53219b-4e2b-4591-9f4f-dfc5f4ba9eb0",
     "version": "0.41.0.1",
     "description": "Galaxy EA Desktop plugin",

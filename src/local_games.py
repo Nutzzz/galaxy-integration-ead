@@ -66,12 +66,19 @@ class OriginGameState(Flag):
     Installed = 1
     Playable = 2
 
+###
+# CRC for each file begin with E4X$01 (45 34 58 24 30 31).
+# Sneaky EA devs reversed the bytes for each file mentioned in each "map.eacrc" file. So we need to reverse it back.
+# Kudos to Linguin for guiding me into the right path.
+###
 
 def parse_map_crc_for_total_size(filepath) -> int:
-    with open(filepath, 'r', encoding='utf-16-le') as f:
+    with open(filepath, 'r', encoding='utf-8') as f:
         content = f.read()
-    pattern = r'size=(\d+)'
+    f.close()
+    pattern = r'E4X\x01(.{4})'
     sizes = re.findall(pattern, content)
+    sizes = [int(size[::-1], 16) for size in sizes]
     return functools.reduce(lambda a, b : a + int(b), sizes, 0)
 
 
@@ -147,13 +154,13 @@ else:
 
 def launch_decryption_process():
     if platform.system() == "Windows":
-            is_decrypt_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "is_decryption_galaxy.py")
-            python_path = os.path.join(get_python_path(), "python.exe")
-            if not os.path.exists(python_path):
-                python_path = "python.exe"
-            if os.path.exists(is_decrypt_path):
-                subprocess.check_output("Powershell -Command \"Start-Process \'" + python_path + "\' -ArgumentList \'" + is_decrypt_path + "\' -Verb RunAs\"", shell=True)
-                time.sleep(10)
+        is_decrypt_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "is_decryption_galaxy.py")
+        python_path = os.path.join(get_python_path(), "python.exe")
+        if not os.path.exists(python_path):
+            python_path = "python.exe"
+        if os.path.exists(is_decrypt_path):
+            subprocess.check_output("Powershell -Command \"Start-Process \'" + python_path + "\' -ArgumentList \'" + is_decrypt_path + "\' -Verb RunAs\"", shell=True)
+            time.sleep(10)
 
 def get_local_games_from_manifests(self):
     local_games = []

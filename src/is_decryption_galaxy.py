@@ -240,9 +240,11 @@ with open(file_path, 'rb') as infile, open(os.path.join(tempfile.gettempdir(), '
 
 json_string = ""
 with open(os.path.join(tempfile.gettempdir(), "is.json"), "r+") as f:
-    # Remove spaces after the last bracket (EOF)
-    json_string = re.sub(r'\s+(?=\})', '', json_string)
+    # Remove undesired characters at the end of the file
+    json_string = re.sub(r'\x06+', '', f.read())
+    f.seek(0)
     f.write(json_string)
+    f.truncate()
 
 print("IS decrypted successfully.")
 

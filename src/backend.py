@@ -1,5 +1,7 @@
 import logging
 import json
+import random
+import sys
 import time
 import xml.etree.ElementTree as ET
 from collections import namedtuple
@@ -98,42 +100,27 @@ class AuthenticatedHttpClient(HttpClient):
             raise AccessDenied("Failed to refresh token")
 
     async def _get_access_token(self):
-        # upd 18.09.2023 : sounds like a flaw ?
-        # the key is in the "Location" header, no redirection needed. as it's a qrc:// request (QT) it won't work with aiohttp
+        # the key is in the "Location" header, no redirection needed.
         url = "https://accounts.ea.com/connect/auth"
         params = {
             "client_id": "JUNO_PC_CLIENT",
-            "nonce": "nonce",
             "display": "junoWeb/login",
             "response_type": "token",
-            "redirectUri": "nucleus:rest",
-            "prompt": "none"
+            "redirectUri": "nucleus:rest"
         }
         response = await super().request("GET", url, params=params, allow_redirects=False)
 
         # upd 18.09.2023 : the access_token is in the "Location" header. It's a Bearer token.
-        try:
+        if "access_token" in response.headers["Location"]:
             data = response.headers["Location"]
             # should look like qrc:/html/login_successful.html#access_token=
             # note that there's some other parameters afterwards, so we need to isolate the variable well
             self._access_token = data.split("#")[1].split("=")[1].split("&")[0]
-            # tokens expire after 4 hours, written in seconds (written in the qrc:// url itself, last parameter)
-            # so we need to save the time of the last successful login
-            # this is used to determine if the token is still valid or not
-            # if it's not, we need to refresh it
-            validity = data.split("#")[1].split("=")[3].split("&")[0]
-            self._save_lats_callback = int(time.time()) + int(validity)
-        except (TypeError, ValueError, KeyError) as e:
+        elif "access_token" not in response.headers["Location"] and "error=login_required" in response.headers["Location"]:
             self._log_session_details()
-            try:
-                # in the case of qrc:/html/login_required.html#error=login_required
-                if data.split("#")[1].split("=")[1].split('&')[0] == "login_required":
-                    raise AuthenticationRequired
-                else:
-                    raise UnknownBackendResponse(data)
-            except AttributeError:
-                logger.exception(f"Error parsing access token: {repr(e)}, data: {data}")
-                raise UnknownBackendResponse
+            raise AuthenticationRequired("Error parsing access token. Must reauthenticate.")
+        else:
+            self._save_lats()
 
     # more logging for auth lost investigation
 
@@ -174,57 +161,53 @@ class OriginBackendClient:
     # Origin (old) API
     @staticmethod
     def _get_origin_host():
-        return "https://api1.origin.com"
-
-    # Only applies to the Juno API. Needed to access certain API endpoints, or else we're refused.
-    @staticmethod
-    def _get_persisted_query_status():
-        return "&extensions={\"persistedQuery\":{\"version\":1,\"sha256Hash\":\"575a85abf94ca1c4c71dd422d536cb15b02c94ac720459e3b7f9750097f9153f\"}}"
+        return "https://api{}.origin.com".format(random.randint(1, 4))
 
     async def get_identity(self) -> Tuple[str, str, str]:
-        pid_response = await self._http_client.get("https://gateway.ea.com/proxy/identity/pids/me")
-        
+        url = "{}?query=query{{ me {{ player {{ pd psd displayName }} }} }}".format(self._get_api_host())
+        pid_response = await self._http_client.get(url)
         data = await pid_response.json()
-        user_id = data["pid"]["pidId"]
-
-        persona_id_response = await self._http_client.get(
-            "{}?operationName=GetPlayerByPdLite&variables={{\"isMutualFriendsEnabled\":false,\"pd\":\"{}\"}}{}".format(self._get_api_host(), user_id, self._get_persisted_query_status())
-        )
-        content = await persona_id_response.json()
-        logger.info("Retrieved content: " + json.dumps(content))
+        logger.info("Getting identity: %s", data)
 
         try:
-            persona_id = content["data"]["playerByPd"]["psd"]
-            user_name = content["data"]["playerByPd"]["displayName"]
+            user_id = data["data"]["me"]["player"]["pd"]
+            persona_id = data["data"]["me"]["player"]["psd"]
+            user_name = data["data"]["me"]["player"]["displayName"]
 
             return str(user_id), str(persona_id), str(user_name)
-        except (ET.ParseError, AttributeError) as e:
-            logger.exception("Can not parse backend response: %s, error %s", content, repr(e))
+        except (AttributeError, KeyError) as e:
+            logger.exception("Can not parse backend response: %s, error %s", data, repr(e))
             raise UnknownBackendResponse()
 
-    async def get_entitlements(self, user_id) -> List[Json]:
-        url = "{}/ecommerce2/consolidatedentitlements/{}?machine_hash=1".format(
-            self._get_origin_host(),
-            user_id
-        )
-        headers = {
-            "Accept": "application/vnd.origin.v3+json; x-cache/force-write"
-        }
-        response = await self._http_client.get(url, headers=headers)
+    async def get_entitlements(self) -> List[Json]:
+        if sys.platform == 'win32':
+            url = "{}?operationName=getPreloadedOwnedGames&variables={{\"isMac\":false,\"locale\":\"fr\",\"limit\":5000,\"next\":\"0\",\"type\":[\"DIGITAL_FULL_GAME\",\"PACKAGED_FULL_GAME\"],\"entitlementEnabled\":true,\"storefronts\":[\"EA\",\"STEAM\",\"EPIC\"],\"ownershipMethods\":[\"UNKNOWN\",\"ASSOCIATION\",\"PURCHASE\",\"REDEMPTION\",\"GIFT_RECEIPT\",\"ENTITLEMENT_GRANT\",\"DIRECT_ENTITLEMENT\",\"PRE_ORDER_PURCHASE\",\"VAULT\",\"XGP_VAULT\",\"STEAM\",\"STEAM_VAULT\",\"STEAM_SUBSCRIPTION\",\"EPIC\",\"EPIC_VAULT\",\"EPIC_SUBSCRIPTION\"],\"platforms\":[\"PC\"]}}&extensions={{\"persistedQuery\":{{\"version\":1,\"sha256Hash\":\"a2b36612157ecaa1a40aa5508d96137ce27c4c344d21dcb6d4feec7f47739fb3\"}}}}".format(
+                self._get_api_host()
+            )
+        elif sys.platform == 'darwin':
+            url = "{}?operationName=getPreloadedOwnedGames&variables={{\"isMac\":true,\"locale\":\"fr\",\"limit\":5000,\"next\":\"0\",\"type\":[\"DIGITAL_FULL_GAME\",\"PACKAGED_FULL_GAME\"],\"entitlementEnabled\":true,\"storefronts\":[\"EA\",\"STEAM\",\"EPIC\"],\"ownershipMethods\":[\"UNKNOWN\",\"ASSOCIATION\",\"PURCHASE\",\"REDEMPTION\",\"GIFT_RECEIPT\",\"ENTITLEMENT_GRANT\",\"DIRECT_ENTITLEMENT\",\"PRE_ORDER_PURCHASE\",\"VAULT\",\"XGP_VAULT\",\"STEAM\",\"STEAM_VAULT\",\"STEAM_SUBSCRIPTION\",\"EPIC\",\"EPIC_VAULT\",\"EPIC_SUBSCRIPTION\"],\"platforms\":[\"PC\"]}}&extensions={{\"persistedQuery\":{{\"version\":1,\"sha256Hash\":\"a2b36612157ecaa1a40aa5508d96137ce27c4c344d21dcb6d4feec7f47739fb3\"}}}}".format(
+                self._get_api_host()
+            )
+        response = await self._http_client.get(url)
         try:
             data = await response.json()
-            logger.debug(json.dumps(data))
-            return data["entitlements"]
+            return data['data']['me']['ownedGameProducts']['items']
         except (ValueError, KeyError) as e:
             logger.exception("Can not parse backend response: %s, error %s", await response.text(), repr(e))
             raise UnknownBackendResponse()
+    
+    async def get_offer(self, game_slug) -> Json:
+        if sys.platform == 'win32':
+            url = "{}?operationName=getUserOwnedProduct&variables={{\"isMac\":false,\"offerIds\":[\"{}\"],\"storefronts\":[\"EA\",\"STEAM\",\"EPIC\"]}}&extensions={{\"persistedQuery\":{{\"version\":1,\"sha256Hash\":\"36a83accd60d006be3805448e028b73656d578c6bd93b88efdae5e20f9b35853\"}}}}".format(
+                self._get_api_host(),
+                game_slug
+            )
+        elif sys.platform == 'darwin':
+            url = "{}?operationName=getUserOwnedProduct&variables={{\"isMac\":true,\"offerIds\":[\"{}\"],\"storefronts\":[\"EA\",\"STEAM\",\"EPIC\"]}}&extensions={{\"persistedQuery\":{{\"version\":1,\"sha256Hash\":\"36a83accd60d006be3805448e028b73656d578c6bd93b88efdae5e20f9b35853\"}}}}".format(
+                self._get_api_host(),
+                game_slug
+            )
 
-    async def get_offer(self, offer_id) -> Json:
-        url = "{}/ecommerce2/public/supercat/{}/{}".format(
-            self._get_origin_host(),
-            offer_id,
-            "en_US"
-        )
         response = await self._http_client.get(url)
         try:
             return await response.json()
@@ -232,76 +215,125 @@ class OriginBackendClient:
             logger.exception("Can not parse backend response: %s, error %s", await response.text, repr(e))
             raise UnknownBackendResponse()
 
-    async def get_achievements(self, persona_id: str, achievement_set: str = None) \
-            -> Dict[AchievementSet, List[Achievement]]:
-
-        response = await self._http_client.get(
-            "https://achievements.gameservices.ea.com/achievements/personas/{persona_id}{ach_set}/all".format(
-                persona_id=persona_id, ach_set=("/" + achievement_set) if achievement_set else ""
+    async def get_achievements(self, offer_id: OfferId, persona_id) -> Dict[AchievementSet, List[Achievement]]:
+        url = "{}?operationName=ownedGameAchievements&variables={{\"offerId\":\"{}\",\"playerPsd\":\"{}\",\"locale\":\"en\"}}&extensions={{\"persistedQuery\":{{\"version\":1,\"sha256Hash\":\"1c6280579cd6b172787735e8efacb21e62dc08039115720254d8948922016277\"}}}}".format(
+                self._get_api_host(),
+                offer_id,
+                persona_id
             ),
-            params={
-                "lang": "en_US",
-                "metadata": "true"
-            }
-        )
+        response = await self._http_client.get(url)
 
         '''
-        'all' format:
-        "50317_185353_50844": {
-            "platform": "PC Origin",
-            "achievements": {"1": {"complete": True, "u": 1376676315, "name": "Stranger in a Strange Land"}},
-            "expansions": [{"id": "222", "name": "Prestige and Speedlists"}],
-            "name": "Need for Speed™"
+        (heavily simplified, but you get the idea, right... right ?)
+        {
+        "data": {
+            "achievements": [
+                {
+                    "id": "51302_190132_50844",
+                    "achievements": [
+                        {
+                            "id": "bc8deacf866d90904a0506f0659bedf71f44775e",
+                            "name": "Operations",
+                            "description": "Win 1 round of Operations in multiplayer",
+                            "awardCount": 0,
+                            "howTo": "",
+                            "images": [
+                                {
+                                    "path": "https://achievements.gameservices.ea.com/achievements/icons/51302_190132_50844-1-40.png",
+                                    "__typename": "Image"
+                                },
+                                {
+                                    "path": "https://achievements.gameservices.ea.com/achievements/icons/51302_190132_50844-1-208.png",
+                                    "__typename": "Image"
+                                },
+                                {
+                                    "path": "https://achievements.gameservices.ea.com/achievements/icons/51302_190132_50844-1-416.png",
+                                    "__typename": "Image"
+                                }
+                            ],
+                            "__typename": "Achievement"
+                        }
+                    ]
+                }
+            ]
         }
-
-        'specific' format:
-        {"1": {"complete": True, "u": 1376676315, "name": "Stranger in a Strange Land"}}
         '''
 
         def parser(json_data: Dict) -> List[Achievement]:
-            return [
-                Achievement(achievement_id=key, achievement_name=value["name"], unlock_time=value["u"])
-                for key, value in json_data.items() if value.get("complete")
-            ]
+            achievements = []
+            try:
+                for achievement in json_data["achievements"]:
+                    if achievement["awardCount"] == 1:
+                        achievement_data = {
+                            "id": achievement["id"],
+                            "name": achievement["name"],
+                            "unlock_time": time.time()
+                        }
+                    achievements.append(achievement_data)
+            except KeyError as e:
+                logger.exception("Can not parse achievements from backend response %s", repr(e))
+                raise UnknownBackendResponse()
+            return achievements
 
         try:
             json = await response.json()
-            if achievement_set is not None:
-                return {AchievementSet(achievement_set): parser(json)}
-
-            return {
-                AchievementSet(achievement_set): parser(info.get("achievements", {}))
-                for achievement_set, info in json.items()
-            }
+            achievement_sets = []
+            for achievement_set in json["data"]["achievements"]:
+                achievements = parser(achievement_set)
+                achievement_sets.append(achievements)
+            return achievement_sets
 
         except (ValueError, KeyError) as e:
             logger.exception("Can not parse achievements from backend response %s", repr(e))
             raise UnknownBackendResponse()
 
-    async def get_game_time(self, user_id, master_title_id, multiplayer_id):
-        url = "{}/atom/users/{}/games/{}/usage".format(
-            self._get_origin_host(),
-            user_id,
-            master_title_id
+        
+    async def get_achievement_set(self, offer_id: OfferId, persona_id) -> str:
+        url = "{}?query=query {{achievements(offerId:\"{}\",playerPsd:\"{}\"){{id}}}}".format(
+                self._get_api_host(),
+                offer_id,
+                persona_id
+            )
+        
+        response = await self._http_client.get(url)
+       
+        try:
+            logger.info("Data: %s", await response.text())
+            json = await response.json()
+            achievements = json["data"]["achievements"]
+            if achievements:
+                return achievements[0]["id"] if "id" in achievements[0] else None
+            else:
+                return None
+
+        except (ValueError, KeyError) as e:
+            logger.exception("Can not parse achievements from backend response %s", repr(e))
+            raise UnknownBackendResponse()
+
+    async def get_game_time(self, game_slug):
+        url = "{}?query=query {{me {{recentGames(gameSlugs:\"{}\"){{items {{lastSessionEndDate totalPlayTimeSeconds}}}}}}}}".format(
+            self._get_api_host(),
+            game_slug
         )
 
-        # 'multiPlayerId' must be used if exists, otherwise '**/lastplayed' backend returns zero
-        headers = {}
-        if multiplayer_id:
-            headers["Multiplayerid"] = multiplayer_id
-
-        response = await self._http_client.get(url, headers=headers)
+        response = await self._http_client.get(url)
 
         """
-        response looks like following:
-        <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-        <usage>
-            <gameId>192140</gameId>
-            <total>30292</total>
-            <MultiplayerId>1024390</MultiplayerId>
-            <lastSession>9</lastSession>
-            <lastSessionEndTimeStamp>1497190184759</lastSessionEndTimeStamp>
-        </usage>
+        example response:
+        {
+            "data": {
+                "me": {
+                "recentGames": {
+                    "items": [
+                        {
+                            "lastSessionEndDate": "2024-02-29T16:00:23.000Z",
+                            "totalPlayTimeSeconds": 791005,
+                        }
+                    ],
+                },
+                }
+            }
+        }
         """
         try:
             def parse_last_played_time(lastplayed_timestamp) -> Optional[int]:
@@ -309,76 +341,41 @@ class OriginBackendClient:
                     return None
                 return round(int(lastplayed_timestamp.text) / 1000) or None  # response is in miliseconds
 
-            content = await response.text()
-            xml_response = ET.fromstring(content)
-            total_play_time = round(int(xml_response.find("total").text) / 60)  # response is in seconds
+            content = await response.json()
+            # assuming this is just EA's way of saying we never played a game.
+            if not content['data']['me']['recentGames']['items']:
+                return 0, None
+            else:
+                total_play_time = round(int(content['data']['me']['recentGames']['items'][0]['totalPlayTimeSeconds'].text) / 60)  # response is in seconds
+                last_played_time = parse_last_played_time(content['data']['me']['recentGames']['items'][0]['lastSessionEndDate'])
 
-            return total_play_time, parse_last_played_time(xml_response.find("lastSessionEndTimeStamp"))
-        except (ET.ParseError, AttributeError, ValueError) as e:
+            return total_play_time, last_played_time
+        except (AttributeError, ValueError, KeyError) as e:
             logger.exception("Can not parse backend response: %s, %s", await response.text(), repr(e))
             raise UnknownBackendResponse()
 
-    async def get_friends(self, user_id):
+    async def get_friends(self):
         response = await self._http_client.get(
-            "{base_api}?operationName=GetPlayerFriends&variables={{\"mutualFriendsOffset\":0,\"mutualFriendsLimit\":0,\"isMutualFriendsEnabled\":false,\"pd\":\"{userid}\",\"offset\":0,\"limit\":0}}{extension}".format(
-                base_api=self._get_api_host(),
-                userid=user_id,
-                extension=self._get_persisted_query_status()
+            "{}?query=query{{me {{friends {{items {{player {{pd psd displayName}}}}}}}}}}".format(
+                self._get_api_host()
             )
         )
 
         """
         {
             "data": {
-                "playerByPd": {
-                "id": "...",
-                "pd": "...",
-                "friends": {
-                    "totalCount": 1,
-                    "hasNextPage": false,
-                    "hasPreviousPage": false,
-                    "items": [
-                    {
-                        "id": "...",
-                        "pd": "...",
-                        "player": {
-                        "id": "...",
-                        "pd": "...",
-                        "psd": "...",
-                        "displayName": "User",
-                        "uniqueName": "User",
-                        "nickname": "User",
-                        "avatar": {
-                            "large": {
-                            "height": 416,
-                            "width": 416,
-                            "path": "https://secure.download.dm.origin.com/production/avatar/prod/1/599/416x416.JPEG",
-                            "__typename": "Image"
-                            },
-                            "medium": {
-                            "height": 208,
-                            "width": 208,
-                            "path": "https://secure.download.dm.origin.com/production/avatar/prod/1/599/208x208.JPEG",
-                            "__typename": "Image"
-                            },
-                            "small": {
-                            "height": 40,
-                            "width": 40,
-                            "path": "https://secure.download.dm.origin.com/production/avatar/prod/1/599/40x40.JPEG",
-                            "__typename": "Image"
-                            },
-                            "__typename": "AvatarList"
-                        },
-                        "relationship": "FRIEND",
-                        "__typename": "Player"
-                        },
-                        "source": "GLOBAL",
-                        "__typename": "Friend"
-                    },
-                    ],
-                    "__typename": "FriendsOffsetPage"
-                },
-                "__typename": "Player"
+                "me": {
+                    "friends": {
+                        "items": [
+                            {
+                                "player": {
+                                    "pd": "...",
+                                    "psd": "...",
+                                    "displayName": "User"
+                                }
+                            }
+                        ]
+                    }
                 }
             }
         }
@@ -387,13 +384,14 @@ class OriginBackendClient:
         try:
             content = await response.json()
             return {
-                user_json["id"]: user_json["pd"]
-                for user_json in content["data"]["playerByPd"]["friends"]["items"]
+                user_json['player']['pd']: user_json["player"]["displayName"]
+                for user_json in content["data"]["me"]["friends"]["items"]
             }
-        except (AttributeError, ValueError):
+        except (AttributeError, KeyError):
             logger.exception("Can not parse backend response: %s", await response.text())
             raise UnknownBackendResponse()
 
+    # Doesn't seem to exist as-is in EA Desktop, does appear in an endpoint response. Might be subject to subsequent rework.
     async def get_lastplayed_games(self, user_id) -> Dict[MasterTitleId, Timestamp]:
         response = await self._http_client.get("{base_api}/atom/users/{user_id}/games/lastplayed".format(
             base_api=self._get_origin_host(),
@@ -438,9 +436,10 @@ class OriginBackendClient:
             logger.exception("Can not parse backend response: %s", await response.text())
             raise UnknownBackendResponse(e)
 
+    # Doesn't exist in EA Desktop, meant to disappear soon.
     async def get_favorite_games(self, user_id) -> Set[OfferId]:
         response = await self._http_client.get("{base_api}/atom/users/{user_id}/privacySettings/FAVORITEGAMES".format(
-            base_api=self._get_api_host(),
+            base_api=self._get_origin_host(),
             user_id=user_id
         ))
 
@@ -469,9 +468,10 @@ class OriginBackendClient:
             logger.exception("Can not parse backend response: %s", await response.text())
             raise UnknownBackendResponse()
 
+    # Doesn't exist in EA Desktop, meant to disappear soon.
     async def get_hidden_games(self, user_id) -> Set[OfferId]:
         response = await self._http_client.get("{base_api}/atom/users/{user_id}/privacySettings/HIDDENGAMES".format(
-            base_api=self._get_api_host(),
+            base_api=self._get_origin_host(),
             user_id=user_id
         ))
 
