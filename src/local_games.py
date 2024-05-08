@@ -191,6 +191,8 @@ def get_local_games_from_manifests(self):
     is_file = os.path.join(tempfile.gettempdir(), "is.json")
     if not os.path.exists(is_file):
         launch_decryption_process()
+    if not os.path.exists(is_file):
+        return []
     file = open(is_file)
     json_file = json.load(file)
     logger.info(f"Opening manifest file {is_file} ...")
