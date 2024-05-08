@@ -1,5 +1,4 @@
 import json
-import pickle
 import re
 import functools
 import logging
@@ -73,12 +72,26 @@ class OriginGameState(Flag):
 ###
 
 def parse_map_crc_for_total_size(filepath) -> int:
-    with open(filepath, 'r', encoding='utf-8') as f:
-        content = f.read()
-    f.close()
-    pattern = r'E4X\x01(.{4})'
+    try:
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except IOError:
+        logging.error(f"Could not open file: {filepath}")
+        return None
+
+    pattern = r'E4X\x01(.{8})'  # Capture the next 8 characters (4 bytes)
     sizes = re.findall(pattern, content)
-    sizes = [int(size[::-1], 16) for size in sizes]
+
+    if not sizes:
+        logging.info(f"No matches found in file: {filepath}")
+        return None
+
+    try:
+        sizes = [int(size[::-1], 16) for size in sizes]
+    except ValueError:
+        logging.error(f"Could not convert sizes to integers: {sizes}")
+        return None
+
     return functools.reduce(lambda a, b : a + int(b), sizes, 0)
 
 

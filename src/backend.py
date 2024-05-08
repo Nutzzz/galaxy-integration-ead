@@ -1,5 +1,4 @@
 import logging
-import json
 import random
 import sys
 import time
@@ -167,7 +166,6 @@ class OriginBackendClient:
         url = "{}?query=query{{ me {{ player {{ pd psd displayName }} }} }}".format(self._get_api_host())
         pid_response = await self._http_client.get(url)
         data = await pid_response.json()
-        logger.info("Getting identity: %s", data)
 
         try:
             user_id = data["data"]["me"]["player"]["pd"]
@@ -215,49 +213,13 @@ class OriginBackendClient:
             logger.exception("Can not parse backend response: %s, error %s", await response.text, repr(e))
             raise UnknownBackendResponse()
 
-    async def get_achievements(self, offer_id: OfferId, persona_id) -> Dict[AchievementSet, List[Achievement]]:
+    async def get_achievements(self, offer: OfferId, persona: str) -> Dict[str, List[Achievement]]:
         url = "{}?operationName=ownedGameAchievements&variables={{\"offerId\":\"{}\",\"playerPsd\":\"{}\",\"locale\":\"en\"}}&extensions={{\"persistedQuery\":{{\"version\":1,\"sha256Hash\":\"1c6280579cd6b172787735e8efacb21e62dc08039115720254d8948922016277\"}}}}".format(
-                self._get_api_host(),
-                offer_id,
-                persona_id
-            ),
+            self._get_api_host(),
+            str(offer),
+            str(persona)
+        )
         response = await self._http_client.get(url)
-
-        '''
-        (heavily simplified, but you get the idea, right... right ?)
-        {
-        "data": {
-            "achievements": [
-                {
-                    "id": "51302_190132_50844",
-                    "achievements": [
-                        {
-                            "id": "bc8deacf866d90904a0506f0659bedf71f44775e",
-                            "name": "Operations",
-                            "description": "Win 1 round of Operations in multiplayer",
-                            "awardCount": 0,
-                            "howTo": "",
-                            "images": [
-                                {
-                                    "path": "https://achievements.gameservices.ea.com/achievements/icons/51302_190132_50844-1-40.png",
-                                    "__typename": "Image"
-                                },
-                                {
-                                    "path": "https://achievements.gameservices.ea.com/achievements/icons/51302_190132_50844-1-208.png",
-                                    "__typename": "Image"
-                                },
-                                {
-                                    "path": "https://achievements.gameservices.ea.com/achievements/icons/51302_190132_50844-1-416.png",
-                                    "__typename": "Image"
-                                }
-                            ],
-                            "__typename": "Achievement"
-                        }
-                    ]
-                }
-            ]
-        }
-        '''
 
         def parser(json_data: Dict) -> List[Achievement]:
             achievements = []
@@ -269,7 +231,7 @@ class OriginBackendClient:
                             "name": achievement["name"],
                             "unlock_time": time.time()
                         }
-                    achievements.append(achievement_data)
+                        achievements.append(achievement_data)
             except KeyError as e:
                 logger.exception("Can not parse achievements from backend response %s", repr(e))
                 raise UnknownBackendResponse()
@@ -277,18 +239,17 @@ class OriginBackendClient:
 
         try:
             json = await response.json()
-            achievement_sets = []
+            achievement_sets = {}
             for achievement_set in json["data"]["achievements"]:
                 achievements = parser(achievement_set)
-                achievement_sets.append(achievements)
+                achievement_sets[achievement_set["id"]] = achievements
             return achievement_sets
 
         except (ValueError, KeyError) as e:
             logger.exception("Can not parse achievements from backend response %s", repr(e))
             raise UnknownBackendResponse()
 
-        
-    async def get_achievement_set(self, offer_id: OfferId, persona_id) -> str:
+    async def get_achievement_set(self, offer_id: OfferId, persona_id: str) -> str:
         url = "{}?query=query {{achievements(offerId:\"{}\",playerPsd:\"{}\"){{id}}}}".format(
                 self._get_api_host(),
                 offer_id,
@@ -296,9 +257,8 @@ class OriginBackendClient:
             )
         
         response = await self._http_client.get(url)
-       
+    
         try:
-            logger.info("Data: %s", await response.text())
             json = await response.json()
             achievements = json["data"]["achievements"]
             if achievements:

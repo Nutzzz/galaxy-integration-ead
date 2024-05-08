@@ -180,10 +180,10 @@ class OriginPlugin(Plugin):
         for game_id in game_ids:
             try:
                 offer = self._offer_id_from_game_id(game_id)
-                achievement_set = await self._backend_client.get_achievement_set(offer_id=offer, persona_id=self._persona_id)
+                achievement_set = await self._backend_client.get_achievement_set(offer, self._persona_id)
                 if achievement_set is not None:
                     achievement_sets[offer] = achievement_set
-                    achievements = await self._backend_client.get_achievements(offer_id=offer, persona_id=self._persona_id)
+                    achievements = await self._backend_client.get_achievements(offer, self._persona_id)
                 else:
                     logger.debug(f"No achievements found for game {offer}")
             except TypeError as e:
@@ -196,18 +196,20 @@ class OriginPlugin(Plugin):
     async def get_unlocked_achievements(self, game_id: GameId, context: AchievementsImportContext) -> List[Achievement]:
         try:
             offerid = self._offer_id_from_game_id(game_id)
-            achievement_set = await self._backend_client.get_achievement_set(offer_id=offerid, persona_id=self._persona_id)
+            achievement_set = await self._backend_client.get_achievement_set(offerid, self._persona_id)
             # See backend response for further information.
             if achievement_set is None:
                 return []
             else:
-                logger.info(f"Parsed achievement Set: {achievement_set}")
                 return (await self._backend_client.get_achievements(
-                    offer_id=offerid, persona_id=self._persona_id
+                    offerid, self._persona_id
                 ))[achievement_set]
 
         except KeyError:
             logger.exception("Failed to parse achievements for game {}".format(game_id))
+            raise UnknownBackendResponse()
+        except TypeError as e:
+            logger.exception("Failed to retrieve achievements for game {}: {}".format(game_id, e))
             raise UnknownBackendResponse()
 
     async def _get_offers(self, offer_ids: Iterable[OfferId]) -> Dict[OfferId, Json]:
@@ -334,7 +336,7 @@ class OriginPlugin(Plugin):
             for dir in dirs:
                 for game_id in game_ids:
                     if dir == "base-" + game_id or dir == "dlc-" + game_id:
-                        game_id_crc_map[game_id] = pathlib.PurePath(root) / 'map.eacrc'
+                        game_id_crc_map[game_id] = pathlib.PurePath(root, dir) / 'map.eacrc'
         return game_id_crc_map
 
     async def get_local_size(self, game_id: GameId, context: Dict[str, pathlib.PurePath]) -> Optional[int]:
